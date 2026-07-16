@@ -359,14 +359,40 @@ SEC_ACTION_REGEX = re.compile(r"(Accepted password for root|account locked|pam_f
 SEC_INFO_REGEX   = re.compile(r"(Failed password|Invalid user|authentication failure)", re.IGNORECASE)
 HW_REGEX         = re.compile(r"(I/O error|sector error|rejecting I/O)", re.IGNORECASE)
 
-def http_post(url, data_dict):
+ERROR_LOG = "/var/log/infra_eye_send_errors.log"
+
+def log_send_error(context, detail):
+    try:
+        with open(ERROR_LOG, "a") as f:
+            f.write("{0} [{1}] {2}\n".format(
+                datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                context, detail
+            ))
+    except Exception:
+        pass
+
+def http_post(url, data_dict, context="unknown"):
     try:
         data = json.dumps(data_dict)
         data = data.encode('utf-8') if PY3 else data.encode('utf-8') if isinstance(data, type(u'')) else data
         req  = urlreq.Request(url, data=data, headers={'Content-Type': 'application/json'})
-        urlreq.urlopen(req, timeout=5)
-    except Exception:
-        pass
+        resp = urlreq.urlopen(req, timeout=5)
+        body = resp.read()
+        if isinstance(body, bytes):
+            body = body.decode('utf-8', errors='replace')
+
+        # Apps Script는 항상 HTTP 200을 반환하므로,
+        # 실제 성공/실패는 응답 본문의 JSON을 열어봐야 판단 가능
+        try:
+            parsed = json.loads(body)
+            if isinstance(parsed, dict) and parsed.get("status") == "error":
+                log_send_error(context, "서버 응답 오류: " + str(parsed.get("message", body)))
+        except ValueError:
+            # JSON이 아닌 응답(예: 순수 "OK" 텍스트)은 정상으로 간주
+            pass
+
+    except Exception as e:
+        log_send_error(context, "전송 실패: " + str(e))
 
 def record_to_sheet(cat, host, msg, now_str):
     labels = {"System": "시스템 오류", "Hardware": "HW 장애", "Security_action": "보안 경고", "Security_info": "보안 참고"}
@@ -375,7 +401,7 @@ def record_to_sheet(cat, host, msg, now_str):
         "timestamp": now_str, "category": labels.get(cat, cat),
         "client": CLIENT, "manager": MANAGER,
         "ip": IP_ADDR, "host": host, "message": msg, "status": status
-    })
+    }, context="record_to_sheet")
 
 def send_google_chat(cat, host, msg):
     if msg in recent_alerts:
@@ -401,7 +427,7 @@ def send_google_chat(cat, host, msg):
              now=now_str, client=CLIENT, manager=MANAGER,
              ip=IP_ADDR, host=host, msg=msg)
 
-    http_post(WEBHOOK_URL, {"text": text})
+    http_post(WEBHOOK_URL, {"text": text}, context="google_chat_webhook")
     record_to_sheet(cat, host, msg, now_str)
 
 while True:

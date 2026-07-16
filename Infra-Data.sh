@@ -283,6 +283,34 @@ echo "서비스 실행정보: ${SERVICE_INFO:-없음}"
 [ "$ACRONIS_DETECTED" = true ] && echo "백업: Acronis Cyber Protect 감지됨 (백업설정여부=Y, 경로=Acronis_cloud)"
 
 # ------------------------------------------------------
+# 코드 버전 (이 스크립트가 위치한 git 리포지토리 기준)
+# ------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CODE_VERSION="Git 리포지토리 아님"
+
+if [ -d "$SCRIPT_DIR/.git" ]; then
+    LOCAL_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null)
+    COMMIT_DATE=$(git -C "$SCRIPT_DIR" log -1 --format=%cd --date=short 2>/dev/null)
+
+    # 원격 최신 정보 가져오기 시도 (실패해도 무시 - 폐쇄망 대응)
+    git -C "$SCRIPT_DIR" fetch -q origin main >/dev/null 2>&1
+    REMOTE_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse --short origin/main 2>/dev/null)
+
+    if [ -z "$LOCAL_COMMIT" ]; then
+        CODE_VERSION="확인 불가"
+    elif [ -z "$REMOTE_COMMIT" ]; then
+        CODE_VERSION="${LOCAL_COMMIT} (${COMMIT_DATE}) - 원격 확인 불가(오프라인)"
+    elif [ "$LOCAL_COMMIT" = "$REMOTE_COMMIT" ]; then
+        CODE_VERSION="${LOCAL_COMMIT} (${COMMIT_DATE}) - 최신"
+    else
+        BEHIND=$(git -C "$SCRIPT_DIR" rev-list --count HEAD..origin/main 2>/dev/null)
+        CODE_VERSION="${LOCAL_COMMIT} (${COMMIT_DATE}) - 구버전(${BEHIND}커밋 뒤처짐, git pull 필요)"
+    fi
+fi
+
+echo "코드 버전: ${CODE_VERSION}"
+
+# ------------------------------------------------------
 # 구글 시트로 전송
 # ------------------------------------------------------
 if command -v python3 >/dev/null 2>&1; then
@@ -295,7 +323,7 @@ else
 fi
 
 export NOW CLIENT_NAME MANAGER_NAME HOSTNAME_VAL IP_ADDR OS_NAME OS_VER KERNEL
-export CPU_INFO MEM_TOTAL DISK_TOTAL BACKUP_ENABLED BACKUP_PATH INSTALLED RUNNING SERVICE_INFO SHEETS_URL
+export CPU_INFO MEM_TOTAL DISK_TOTAL BACKUP_ENABLED BACKUP_PATH INSTALLED RUNNING SERVICE_INFO CODE_VERSION SHEETS_URL
 
 echo ""
 echo "구글 시트로 전송 중..."
@@ -327,7 +355,8 @@ data = {
     "backupPath": os.environ.get("BACKUP_PATH", ""),
     "installedApps": os.environ.get("INSTALLED", ""),
     "runningServices": os.environ.get("RUNNING", ""),
-    "serviceInfo": os.environ.get("SERVICE_INFO", "")
+    "serviceInfo": os.environ.get("SERVICE_INFO", ""),
+    "codeVersion": os.environ.get("CODE_VERSION", "")
 }
 
 url = os.environ.get("SHEETS_URL", "")
@@ -335,8 +364,23 @@ body = json.dumps(data).encode("utf-8")
 
 try:
     req = urlreq.Request(url, data=body, headers={"Content-Type": "application/json"})
-    urlreq.urlopen(req, timeout=10)
-    print("SEND OK")
+    resp = urlreq.urlopen(req, timeout=10)
+    resp_body = resp.read()
+    if isinstance(resp_body, bytes):
+        resp_body = resp_body.decode("utf-8", errors="replace")
+
+    # Apps Script는 항상 HTTP 200을 반환하므로,
+    # 실제 성공/실패는 응답 본문의 JSON을 열어봐야 판단 가능
+    try:
+        parsed = json.loads(resp_body)
+        if isinstance(parsed, dict) and parsed.get("status") == "error":
+            print("SEND FAILED (server error): " + str(parsed.get("message", resp_body)))
+        else:
+            print("SEND OK")
+    except ValueError:
+        # JSON이 아닌 응답(예: 순수 "OK" 텍스트)은 정상으로 간주
+        print("SEND OK")
+
 except Exception as e:
     print("SEND FAILED: " + str(e))
 PYEOF
