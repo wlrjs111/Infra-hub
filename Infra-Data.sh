@@ -185,7 +185,9 @@ BACKUP_LINES=$( { $SUDO crontab -l 2>/dev/null; $SUDO cat /etc/cron.d/* 2>/dev/n
 
 if [ -n "$BACKUP_LINES" ]; then
     BACKUP_ENABLED="Y"
-    BACKUP_PATH=$(echo "$BACKUP_LINES" | grep -oE "(/[a-zA-Z0-9_./-]{3,})" | grep -vE "^/(usr|bin|sbin)/" | sort -u | paste -sd ', ' -)
+    # ">>" 뒤는 로그 리다이렉트 경로일 뿐 백업 대상이 아니므로 잘라내고,
+    # 그 앞부분(실행 커맨드)에서만 경로를 추출한다.
+    BACKUP_PATH=$(echo "$BACKUP_LINES" | sed 's/>>.*//' | grep -oE "(/[a-zA-Z0-9_./-]{3,})" | grep -vE "^/(usr|bin|sbin)/" | sort -u | paste -sd ', ' -)
     [ -z "$BACKUP_PATH" ] && BACKUP_PATH="(경로 자동 추출 실패 - crontab 수동 확인 필요)"
 else
     BACKUP_ENABLED="N"
