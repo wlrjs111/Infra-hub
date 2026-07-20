@@ -307,19 +307,14 @@ if [ -d "$SCRIPT_DIR/.git" ]; then
     COMMIT_DATE=$(cd "$SCRIPT_DIR" && git log -1 --format=%cd --date=short 2>/dev/null)
     CODE_COMMIT="$LOCAL_COMMIT"
 
-    # 원격 최신 정보 가져오기 시도 (실패해도 무시 - 폐쇄망 대응, 이건 참고용 텍스트에만 씀)
-    (cd "$SCRIPT_DIR" && git fetch -q origin main >/dev/null 2>&1)
-    REMOTE_COMMIT=$(cd "$SCRIPT_DIR" && git rev-parse --short origin/main 2>/dev/null)
-
+    # "최신"/"구버전" 같은 판단은 여기서 안 함. 이 스크립트는 폐쇄망에서도 돌아가야 해서
+    # 깃허브 접속 여부에 의존하는 판단을 서버 쪽에 두지 않는다.
+    # 최신 여부 판정은 대시보드(Apps Script)가 깃허브 API로 실시간 조회해서 담당한다.
+    # 여기서는 그냥 "지금 이 서버가 어느 커밋에 있는지"만 사실 그대로 보고.
     if [ -z "$LOCAL_COMMIT" ]; then
         CODE_VERSION="확인 불가"
-    elif [ -z "$REMOTE_COMMIT" ]; then
-        CODE_VERSION="${LOCAL_COMMIT} (${COMMIT_DATE}) - 원격 확인 불가(오프라인)"
-    elif [ "$LOCAL_COMMIT" = "$REMOTE_COMMIT" ]; then
-        CODE_VERSION="${LOCAL_COMMIT} (${COMMIT_DATE}) - 최신"
     else
-        BEHIND=$(cd "$SCRIPT_DIR" && git rev-list --count HEAD..origin/main 2>/dev/null)
-        CODE_VERSION="${LOCAL_COMMIT} (${COMMIT_DATE}) - 구버전(${BEHIND}커밋 뒤처짐, git pull 필요)"
+        CODE_VERSION="${LOCAL_COMMIT} (${COMMIT_DATE})"
     fi
 fi
 
