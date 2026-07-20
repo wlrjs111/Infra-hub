@@ -289,12 +289,14 @@ echo "서비스 실행정보: ${SERVICE_INFO:-없음}"
 # ------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODE_VERSION="Git 리포지토리 아님"
+CODE_COMMIT=""
 
 if [ -d "$SCRIPT_DIR/.git" ]; then
     LOCAL_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null)
     COMMIT_DATE=$(git -C "$SCRIPT_DIR" log -1 --format=%cd --date=short 2>/dev/null)
+    CODE_COMMIT="$LOCAL_COMMIT"
 
-    # 원격 최신 정보 가져오기 시도 (실패해도 무시 - 폐쇄망 대응)
+    # 원격 최신 정보 가져오기 시도 (실패해도 무시 - 폐쇄망 대응, 이건 참고용 텍스트에만 씀)
     git -C "$SCRIPT_DIR" fetch -q origin main >/dev/null 2>&1
     REMOTE_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse --short origin/main 2>/dev/null)
 
@@ -311,6 +313,7 @@ if [ -d "$SCRIPT_DIR/.git" ]; then
 fi
 
 echo "코드 버전: ${CODE_VERSION}"
+echo "코드 커밋 해시: ${CODE_COMMIT:-없음}"
 
 # ------------------------------------------------------
 # 크론탭 자동 등록 (매일 새벽 3시 git pull + Infra-Data.sh 재실행)
@@ -349,7 +352,7 @@ else
 fi
 
 export NOW CLIENT_NAME MANAGER_NAME HOSTNAME_VAL IP_ADDR OS_NAME OS_VER KERNEL
-export CPU_INFO MEM_TOTAL DISK_TOTAL BACKUP_ENABLED BACKUP_PATH INSTALLED RUNNING SERVICE_INFO CODE_VERSION SHEETS_URL
+export CPU_INFO MEM_TOTAL DISK_TOTAL BACKUP_ENABLED BACKUP_PATH INSTALLED RUNNING SERVICE_INFO CODE_VERSION CODE_COMMIT SHEETS_URL
 
 echo ""
 echo "구글 시트로 전송 중..."
@@ -382,7 +385,8 @@ data = {
     "installedApps": os.environ.get("INSTALLED", ""),
     "runningServices": os.environ.get("RUNNING", ""),
     "serviceInfo": os.environ.get("SERVICE_INFO", ""),
-    "codeVersion": os.environ.get("CODE_VERSION", "")
+    "codeVersion": os.environ.get("CODE_VERSION", ""),
+    "codeCommit": os.environ.get("CODE_COMMIT", "")
 }
 
 url = os.environ.get("SHEETS_URL", "")
