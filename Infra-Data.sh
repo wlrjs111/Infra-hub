@@ -313,6 +313,30 @@ fi
 echo "코드 버전: ${CODE_VERSION}"
 
 # ------------------------------------------------------
+# 크론탭 자동 등록 (매일 새벽 3시 git pull + Infra-Data.sh 재실행)
+# 기존 크론탭 내용은 절대 건드리지 않고, 아래 마커가 없을 때만 맨 끝에 한 줄 추가한다.
+# 이미 등록돼 있으면(마커 발견) 아무것도 안 하고 건너뜀 -> 매번 실행해도 중복 안 됨.
+# (git 리포지토리가 아닌 위치에서 실행했으면 SCRIPT_DIR/.git이 없으므로 건너뜀)
+# ------------------------------------------------------
+if [ -d "$SCRIPT_DIR/.git" ]; then
+    CRON_MARKER="# infra-hub-auto-update"
+    CRON_LINE="0 3 * * * cd ${SCRIPT_DIR} && git pull >> /var/log/infra_hub_pull.log 2>&1 && bash ${SCRIPT_DIR}/Infra-Data.sh >> /var/log/infra_hub_pull.log 2>&1 ${CRON_MARKER}"
+
+    EXISTING_CRON=$($SUDO crontab -l 2>/dev/null)
+
+    if echo "$EXISTING_CRON" | grep -qF "$CRON_MARKER"; then
+        echo "크론탭: 이미 자동 갱신 등록되어 있음 (건드리지 않음)"
+    else
+        if [ -z "$EXISTING_CRON" ]; then
+            echo "$CRON_LINE" | $SUDO crontab -
+        else
+            { echo "$EXISTING_CRON"; echo "$CRON_LINE"; } | $SUDO crontab -
+        fi
+        echo "크론탭: 자동 갱신(매일 새벽 3시 git pull + 재실행) 등록 완료"
+    fi
+fi
+
+# ------------------------------------------------------
 # 구글 시트로 전송
 # ------------------------------------------------------
 if command -v python3 >/dev/null 2>&1; then
