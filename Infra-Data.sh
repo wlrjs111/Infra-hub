@@ -292,13 +292,24 @@ CODE_VERSION="Git 리포지토리 아님"
 CODE_COMMIT=""
 
 if [ -d "$SCRIPT_DIR/.git" ]; then
-    LOCAL_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null)
-    COMMIT_DATE=$(git -C "$SCRIPT_DIR" log -1 --format=%cd --date=short 2>/dev/null)
+    # root(sudo)로 실행 시 저장소 소유자(예: mzadmin)와 실행 유저(root)가 달라서
+    # git이 "dubious ownership" 보안 경고로 조회를 거부하고 조용히 실패하는 경우가 있음
+    # (이 스크립트는 git 에러를 2>/dev/null로 숨기고 있어서 "확인 불가"로만 보임).
+    # 이 저장소 경로를 안전 목록에 추가해서 근본적으로 해결. 이미 추가돼 있으면 중복 추가 안 함.
+    if ! git config --global --get-all safe.directory 2>/dev/null | grep -qxF "$SCRIPT_DIR"; then
+        git config --global --add safe.directory "$SCRIPT_DIR" 2>/dev/null
+    fi
+
+    # 주의: "git -C <path>" 옵션은 Git 1.8.5 이상에서만 지원됨.
+    # CentOS 7 등 구형 OS 기본 git(1.8.3.1)은 -C를 몰라서 매번 조용히 실패했었음(2>/dev/null로 에러 숨김).
+    # -> 서브셸에서 cd 후 실행하는 방식으로 대체(본 스크립트의 현재 작업 디렉토리는 그대로 유지됨).
+    LOCAL_COMMIT=$(cd "$SCRIPT_DIR" && git rev-parse --short HEAD 2>/dev/null)
+    COMMIT_DATE=$(cd "$SCRIPT_DIR" && git log -1 --format=%cd --date=short 2>/dev/null)
     CODE_COMMIT="$LOCAL_COMMIT"
 
     # 원격 최신 정보 가져오기 시도 (실패해도 무시 - 폐쇄망 대응, 이건 참고용 텍스트에만 씀)
-    git -C "$SCRIPT_DIR" fetch -q origin main >/dev/null 2>&1
-    REMOTE_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse --short origin/main 2>/dev/null)
+    (cd "$SCRIPT_DIR" && git fetch -q origin main >/dev/null 2>&1)
+    REMOTE_COMMIT=$(cd "$SCRIPT_DIR" && git rev-parse --short origin/main 2>/dev/null)
 
     if [ -z "$LOCAL_COMMIT" ]; then
         CODE_VERSION="확인 불가"
@@ -307,7 +318,7 @@ if [ -d "$SCRIPT_DIR/.git" ]; then
     elif [ "$LOCAL_COMMIT" = "$REMOTE_COMMIT" ]; then
         CODE_VERSION="${LOCAL_COMMIT} (${COMMIT_DATE}) - 최신"
     else
-        BEHIND=$(git -C "$SCRIPT_DIR" rev-list --count HEAD..origin/main 2>/dev/null)
+        BEHIND=$(cd "$SCRIPT_DIR" && git rev-list --count HEAD..origin/main 2>/dev/null)
         CODE_VERSION="${LOCAL_COMMIT} (${COMMIT_DATE}) - 구버전(${BEHIND}커밋 뒤처짐, git pull 필요)"
     fi
 fi
