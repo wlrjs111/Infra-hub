@@ -25,6 +25,14 @@ HOSTNAME_VAL=$(hostname)
 IP_ADDR=$(hostname -I | awk '{print $1}')
 NOW=$(date '+%Y-%m-%d %H:%M:%S')
 
+# 공인 IP (그라파나 알람의 ip 라벨과 매칭시키는 용도. 사설 IP_ADDR과는 별개 컬럼으로 저장됨)
+# 인터넷 안 되는 폐쇄망 서버는 조회 실패할 수 있으므로, 실패 시 그냥 빈 값으로 둔다(사설 IP로 덮어쓰지 않음).
+PUBLIC_IP=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null)
+if [ -z "$PUBLIC_IP" ]; then
+    PUBLIC_IP=$(curl -s --max-time 5 https://ifconfig.me 2>/dev/null)
+fi
+[ -n "$PUBLIC_IP" ] && echo "공인 IP 확인 완료: $PUBLIC_IP" || echo "공인 IP 확인 실패 (폐쇄망이거나 인터넷 접속 불가로 추정)"
+
 echo "======================================================"
 echo "  Infra-Data 자산 정보 수집: $HOSTNAME_VAL"
 echo "======================================================"
@@ -357,7 +365,7 @@ else
     exit 1
 fi
 
-export NOW CLIENT_NAME MANAGER_NAME HOSTNAME_VAL IP_ADDR OS_NAME OS_VER KERNEL
+export NOW CLIENT_NAME MANAGER_NAME HOSTNAME_VAL IP_ADDR PUBLIC_IP OS_NAME OS_VER KERNEL
 export CPU_INFO MEM_TOTAL DISK_TOTAL BACKUP_ENABLED BACKUP_PATH INSTALLED RUNNING SERVICE_INFO CODE_VERSION CODE_COMMIT SHEETS_URL
 
 echo ""
@@ -380,6 +388,7 @@ data = {
     "manager": os.environ.get("MANAGER_NAME", ""),
     "host": os.environ.get("HOSTNAME_VAL", ""),
     "ip": os.environ.get("IP_ADDR", ""),
+    "publicIp": os.environ.get("PUBLIC_IP", ""),
     "os": os.environ.get("OS_NAME", ""),
     "osVersion": os.environ.get("OS_VER", ""),
     "kernel": os.environ.get("KERNEL", ""),
